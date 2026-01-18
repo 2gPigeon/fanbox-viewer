@@ -89,7 +89,12 @@ fun PostListScreen2(
     }
 
     Scaffold(topBar = {
-        TopAppBar(title = { Text("${creatorName}の投稿") }, actions = {
+        TopAppBar(title = {
+            Row {
+                Text(creatorName, fontWeight = FontWeight.Bold, modifier = Modifier.alignByBaseline())
+                Text("の投稿", modifier = Modifier.alignByBaseline())
+            }
+        }, actions = {
             IconButton(onClick = {
                 scope.launch {
                     syncing.value = true

@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.fanboxviewer.AppContainer
@@ -41,6 +42,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,19 +57,23 @@ fun CreatorListScreen(
 ) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    val creators by container.creatorRepository.observeSupporting().collectAsState(initial = emptyList())
+    val creators: List<CreatorEntity>? by container.creatorRepository
+        .observeSupporting()
+        .collectAsState(initial = null)
     val syncing = remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("クリエイター一覧") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("クリエイター", style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                        Text("一覧", style = MaterialTheme.typography.titleLarge)
+                    }
+                },
                 actions = {
-                    // Bookmarks: use bookmark icon
                     IconButton(onClick = onOpenBookmarks) { Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク") }
-                    // Hidden: circle with slash icon
                     IconButton(onClick = onOpenHidden) { Icon(Icons.Filled.Block, contentDescription = "非表示") }
-                    // Settings: wrench-like icon
                     IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Build, contentDescription = "設定") }
                 }
             )
@@ -131,30 +139,39 @@ fun CreatorListScreen(
                 }
             }
 
-            if (creators.isEmpty()) {
-                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("支援中クリエイターがありません")
+            when {
+                creators == null -> {
+                    // 初期ロード中は何も表示しない（必要ならローディング表示に変更可能）
                 }
-            } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(creators, key = { it.creatorId }) { c ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpenCreator(c.creatorId, c.name) }
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            AsyncImage(
-                                model = c.iconUrl,
-                                contentDescription = null,
-                                modifier = Modifier.height(40.dp)
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                                Text("最終同期 ${c.lastSyncedAt ?: 0}", style = MaterialTheme.typography.bodySmall)
+                creators!!.isEmpty() -> {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.size(24.dp))
+                        Text("支援中クリエイターがありません")
+                    }
+                }
+                else -> {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(creators!!, key = { it.creatorId }) { c ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenCreator(c.creatorId, c.name) }
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = c.iconUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    val ts = c.lastSyncedAt
+                                    if (ts != null && ts > 0) {
+                                        Text("最終同期 ${dateStringShort(ts)}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                }
                             }
                         }
                     }
@@ -163,3 +180,9 @@ fun CreatorListScreen(
         }
     }
 }
+
+private fun dateStringShort(epochMs: Long): String {
+    val dt = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
+    return dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+}
+
