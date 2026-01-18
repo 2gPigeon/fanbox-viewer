@@ -26,12 +26,14 @@ class PostInPageApi {
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
 
         val logSb = StringBuilder()
-        fun jsFetch(creator: String, limit: Int, offset: Int): String {
+        fun jsFetch(creator: String, limit: Int, firstPublished: String?, firstId: String?): String {
             val isNumeric = creator.all { it.isDigit() }
+            val firstFieldTs = if (firstPublished.isNullOrBlank()) "" else ",\\\"firstPublishedDatetime\\\":\\\"$firstPublished\\\""
+            val firstFieldId = if (firstId.isNullOrBlank()) "" else ",\\\"firstId\\\":\\\"$firstId\\\""
             val body = if (isNumeric) {
-                "{" + "\\\"userId\\\":\\\"$creator\\\",\\\"limit\\\":$limit,\\\"offset\\\":$offset" + "}"
+                "{" + "\\\"userId\\\":\\\"$creator\\\",\\\"limit\\\":$limit$firstFieldTs$firstFieldId" + "}"
             } else {
-                "{" + "\\\"creatorId\\\":\\\"$creator\\\",\\\"limit\\\":$limit,\\\"offset\\\":$offset" + "}"
+                "{" + "\\\"creatorId\\\":\\\"$creator\\\",\\\"limit\\\":$limit$firstFieldTs$firstFieldId" + "}"
             }
             val js = """
                 (async () => {
@@ -61,8 +63,23 @@ class PostInPageApi {
             return js
         }
 
-        fun runOnce() {
-            webView.evaluateJavascript(jsFetch(creatorId, limit, offset)) { value ->
+        fun formatFirstPublished(epochMs: Long): String {
+            return try {
+                val dt = java.time.Instant.ofEpochMilli(epochMs)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDateTime()
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(dt)
+            } catch (_: Exception) { "" }
+        }
+
+        val acc = mutableListOf<PostWebItem>()
+        var nextFirst: String? = null
+        var nextFirstId: String? = null
+        var remaining = if (limit <= 0) Int.MAX_VALUE else limit
+
+        fun fetchNextPage() {
+            val pageSize = kotlin.math.min(50, remaining)
+            webView.evaluateJavascript(jsFetch(creatorId, pageSize, nextFirst, nextFirstId)) { value ->
                 val text = if (value != null && value.startsWith("\"") && value.endsWith("\"")) {
                     value.substring(1, value.length - 1).replace("\\n", "\n").replace("\\\"", "\"")
                 } else value ?: "{}"
@@ -70,7 +87,7 @@ class PostInPageApi {
                     val obj = JSONObject(text)
                     if (obj.has("error")) {
                         logSb.append("WV exception ").append(obj.optString("error")).append('\n')
-                        cont.resume(emptyList<PostWebItem>() to logSb.toString())
+                        cont.resume(acc.toList() to logSb.toString())
                         webView.destroy()
                         return@evaluateJavascript
                     }
@@ -78,11 +95,31 @@ class PostInPageApi {
                     val bodyStr = obj.optString("body", "")
                     logSb.append("WV POST post.listCreator -> ").append(status).append(" len=").append(bodyStr.length).append('\n')
                     val parsed = PostApiService(appContext).parsePostsFromApi(bodyStr, creatorId)
-                    cont.resume(parsed to logSb.toString())
+                    if (parsed.isEmpty()) {
+                        cont.resume(acc.toList() to logSb.toString())
+                        webView.destroy()
+                        return@evaluateJavascript
+                    }
+                    acc.addAll(parsed)
+                    remaining -= parsed.size
+                    if (remaining <= 0 || parsed.size < 50) {
+                        cont.resume(acc.toList() to logSb.toString())
+                        webView.destroy()
+                        return@evaluateJavascript
+                    }
+                    val last = parsed.last()
+                    val fp = formatFirstPublished(last.publishedAt)
+                    if (fp.isBlank()) {
+                        cont.resume(acc.toList() to logSb.toString())
+                        webView.destroy()
+                    } else {
+                        nextFirst = fp
+                        nextFirstId = last.postId
+                        fetchNextPage()
+                    }
                 } catch (e: Exception) {
                     logSb.append("WV parse exception ").append(e.message).append('\n')
-                    cont.resume(emptyList<PostWebItem>() to logSb.toString())
-                } finally {
+                    cont.resume(acc.toList() to logSb.toString())
                     webView.destroy()
                 }
             }
@@ -91,7 +128,7 @@ class PostInPageApi {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                runOnce()
+                fetchNextPage()
             }
         }
         webView.loadUrl("https://www.fanbox.cc/")

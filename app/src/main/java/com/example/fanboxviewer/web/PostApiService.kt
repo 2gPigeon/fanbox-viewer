@@ -27,40 +27,114 @@ class PostApiService(private val context: Context) {
 
     fun fetchPostsForCreatorWithDebug(creatorId: String, limit: Int = 5000, offset: Int = 0): Pair<List<PostWebItem>, String> {
         val log = StringBuilder()
-        data class Endpoint(val url: String, val method: String, val body: String?)
-        val isNumericId = creatorId.all { it.isDigit() }
-        val bodyJsonCreator = "{" + "\"creatorId\":\"$creatorId\",\"limit\":$limit,\"offset\":$offset" + "}"
-        val bodyJsonUser = "{" + "\"userId\":\"$creatorId\",\"limit\":$limit,\"offset\":$offset" + "}"
-        val candidates = listOf(
-            Endpoint("https://api.fanbox.cc/post.listCreator?creatorId=$creatorId&sort=newest&limit=$limit", "GET", null),
-            Endpoint("https://api.fanbox.cc/post.listCreator?userId=$creatorId&sort=newest&limit=$limit", "GET", null),
-            Endpoint("https://api.fanbox.cc/post.listCreator", "POST", if (isNumericId) bodyJsonUser else bodyJsonCreator),
-            Endpoint("https://api.fanbox.cc/post.listCreator", "POST", bodyJsonCreator),
-            Endpoint("https://api.fanbox.cc/post.listCreator", "POST", bodyJsonUser),
-        )
-        for (ep in candidates) {
-            try {
-                val builder = Request.Builder().url(ep.url.toHttpUrl())
-                if (ep.method == "POST") {
-                    val media = "application/json; charset=utf-8".toMediaType()
-                    val body = (ep.body ?: "{}").toRequestBody(media)
-                    builder.post(body).header("Content-Type", "application/json")
-                } else builder.get()
-                val req = builder.build()
-                client.execute(req).use { resp ->
-                    val code = resp.code
-                    log.append(ep.method).append(' ').append(ep.url).append(" -> ").append(code).append('\n')
-                    val txt = resp.body?.string() ?: ""
-                    log.append("len=").append(txt.length).append(" snippet=").append(txt.take(200)).append('\n')
-                    if (!resp.isSuccessful) return@use
-                    val parsed = parsePostsFromApi(txt, creatorId)
-                    if (parsed.isNotEmpty()) return parsed to log.toString()
-                }
-            } catch (e: Exception) {
-                log.append("exception ").append(e::class.java.simpleName).append(':').append(e.message).append(" @ ").append(ep.url).append('\n')
+
+        fun formatFirstPublished(epochMs: Long): String {
+            return try {
+                val dt = java.time.Instant.ofEpochMilli(epochMs)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDateTime()
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(dt)
+            } catch (_: Exception) {
+                ""
             }
         }
-        return emptyList<PostWebItem>() to log.toString()
+
+        data class Endpoint(val url: String, val method: String, val body: String?)
+
+        fun buildCandidates(firstPublished: String?, firstId: String?, pageSize: Int): List<Endpoint> {
+            val isNumericId = creatorId.all { it.isDigit() }
+            val baseQueryCreator = StringBuilder("https://api.fanbox.cc/post.listCreator?creatorId=")
+                .append(creatorId)
+                .append("&sort=newest&limit=").append(pageSize)
+            val baseQueryUser = StringBuilder("https://api.fanbox.cc/post.listCreator?userId=")
+                .append(creatorId)
+                .append("&sort=newest&limit=").append(pageSize)
+            if (!firstPublished.isNullOrBlank()) {
+                val enc = java.net.URLEncoder.encode(firstPublished, Charsets.UTF_8.name())
+                baseQueryCreator.append("&firstPublishedDatetime=").append(enc)
+                baseQueryUser.append("&firstPublishedDatetime=").append(enc)
+            }
+            if (!firstId.isNullOrBlank()) {
+                val encId = java.net.URLEncoder.encode(firstId, Charsets.UTF_8.name())
+                baseQueryCreator.append("&firstId=").append(encId)
+                baseQueryUser.append("&firstId=").append(encId)
+            }
+
+            val bodyCreatorSb = StringBuilder("{")
+                .append("\"creatorId\":\"").append(creatorId).append("\",")
+                .append("\"limit\":").append(pageSize)
+            val bodyUserSb = StringBuilder("{")
+                .append("\"userId\":\"").append(creatorId).append("\",")
+                .append("\"limit\":").append(pageSize)
+            if (!firstPublished.isNullOrBlank()) {
+                bodyCreatorSb.append(",\"firstPublishedDatetime\":\"").append(firstPublished).append("\"")
+                bodyUserSb.append(",\"firstPublishedDatetime\":\"").append(firstPublished).append("\"")
+            }
+            if (!firstId.isNullOrBlank()) {
+                bodyCreatorSb.append(",\"firstId\":\"").append(firstId).append("\"")
+                bodyUserSb.append(",\"firstId\":\"").append(firstId).append("\"")
+            }
+            bodyCreatorSb.append('}')
+            bodyUserSb.append('}')
+
+            return listOf(
+                Endpoint(baseQueryCreator.toString(), "GET", null),
+                Endpoint(baseQueryUser.toString(), "GET", null),
+                Endpoint("https://api.fanbox.cc/post.listCreator", "POST", if (isNumericId) bodyUserSb.toString() else bodyCreatorSb.toString()),
+                Endpoint("https://api.fanbox.cc/post.listCreator", "POST", bodyCreatorSb.toString()),
+                Endpoint("https://api.fanbox.cc/post.listCreator", "POST", bodyUserSb.toString()),
+            )
+        }
+
+        fun fetchOnePage(firstPublished: String?, firstId: String?, pageSize: Int): Pair<List<PostWebItem>, String> {
+            val localLog = StringBuilder()
+            val candidates = buildCandidates(firstPublished, firstId, pageSize)
+            for (ep in candidates) {
+                try {
+                    val builder = Request.Builder().url(ep.url.toHttpUrl())
+                    if (ep.method == "POST") {
+                        val media = "application/json; charset=utf-8".toMediaType()
+                        val body = (ep.body ?: "{}").toRequestBody(media)
+                        builder.post(body).header("Content-Type", "application/json")
+                    } else builder.get()
+                    val req = builder.build()
+                    client.execute(req).use { resp ->
+                        val code = resp.code
+                        localLog.append(ep.method).append(' ').append(ep.url).append(" -> ").append(code).append('\n')
+                        val txt = resp.body?.string() ?: ""
+                        localLog.append("len=").append(txt.length).append(" snippet=").append(txt.take(200)).append('\n')
+                        if (!resp.isSuccessful) return@use
+                        val parsed = parsePostsFromApi(txt, creatorId)
+                        // Accept empty page as valid end-of-list
+                        return parsed to localLog.toString()
+                    }
+                } catch (e: Exception) {
+                    localLog.append("exception ").append(e::class.java.simpleName).append(':').append(e.message).append(" @ ").append(ep.url).append('\n')
+                }
+            }
+            return emptyList<PostWebItem>() to localLog.toString()
+        }
+
+        val results = mutableListOf<PostWebItem>()
+        var nextFirstPublished: String? = null
+        var nextFirstId: String? = null
+        var remaining = if (limit <= 0) Int.MAX_VALUE else limit
+        val pageSize = kotlin.math.min(50, kotlin.math.max(1, remaining))
+
+        while (remaining > 0) {
+            val (page, pageLog) = fetchOnePage(nextFirstPublished, nextFirstId, kotlin.math.min(50, remaining))
+            log.append(pageLog)
+            if (page.isEmpty()) break
+            results.addAll(page)
+            remaining -= page.size
+            if (page.size < 50) break
+            val last = page.last()
+            val fp = formatFirstPublished(last.publishedAt)
+            if (fp.isBlank()) break else nextFirstPublished = fp
+            nextFirstId = last.postId
+        }
+
+        return results to log.toString()
     }
 
     internal fun parsePostsFromApi(body: String, creatorId: String): List<PostWebItem> {
