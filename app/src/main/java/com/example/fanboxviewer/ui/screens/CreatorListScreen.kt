@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,9 +61,12 @@ fun CreatorListScreen(
             TopAppBar(
                 title = { Text("クリエイター一覧") },
                 actions = {
-                    IconButton(onClick = onOpenBookmarks) { Text("★") }
-                    IconButton(onClick = onOpenHidden) { Text("非") }
-                    IconButton(onClick = onOpenSettings) { Text("設") }
+                    // Bookmarks: use bookmark icon
+                    IconButton(onClick = onOpenBookmarks) { Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク") }
+                    // Hidden: circle with slash icon
+                    IconButton(onClick = onOpenHidden) { Icon(Icons.Filled.Block, contentDescription = "非表示") }
+                    // Settings: wrench-like icon
+                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Build, contentDescription = "設定") }
                 }
             )
         }
@@ -128,7 +134,7 @@ fun CreatorListScreen(
             if (creators.isEmpty()) {
                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Spacer(Modifier.height(24.dp))
-                    Text("支援中クリエイターがありません。")
+                    Text("支援中クリエイターがありません")
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -148,7 +154,7 @@ fun CreatorListScreen(
                             )
                             Column(Modifier.weight(1f)) {
                                 Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                                Text("最終同期: ${c.lastSyncedAt ?: 0}", style = MaterialTheme.typography.bodySmall)
+                                Text("最終同期 ${c.lastSyncedAt ?: 0}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -157,4 +163,3 @@ fun CreatorListScreen(
         }
     }
 }
-

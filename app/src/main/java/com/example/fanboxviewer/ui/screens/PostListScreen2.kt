@@ -11,13 +11,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -30,7 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.fanboxviewer.AppContainer
 import com.example.fanboxviewer.data.local.PostEntity
@@ -66,14 +72,20 @@ fun PostListScreen2(
     val preferredId = preferredIdState.value
     val posts by container.postRepository.observeByCreator(preferredId).collectAsState(initial = emptyList())
     val query = remember { mutableStateOf("") }
-    val selectedYm = remember { mutableStateOf<String?>(null) }
+    val selectedYear = remember { mutableStateOf<String?>(null) }
     val syncing = remember { mutableStateOf(false) }
 
-    val months = posts.map { ym(it.publishedAt) }.distinct()
+    val years = run {
+        if (posts.isEmpty()) emptyList() else {
+            val minY = posts.minOf { yearOf(it.publishedAt) }
+            val maxY = posts.maxOf { yearOf(it.publishedAt) }
+            (maxY downTo minY).toList()
+        }
+    }
     val filtered = posts.filter {
         val matchesQuery = query.value.isBlank() || it.title.contains(query.value, ignoreCase = true) || (it.summary?.contains(query.value, true) == true)
-        val matchesMonth = selectedYm.value?.let { ym -> ym(it.publishedAt) == ym } ?: true
-        matchesQuery && matchesMonth
+        val matchesYear = selectedYear.value?.let { y -> yearOf(it.publishedAt).toString() == y } ?: true
+        matchesQuery && matchesYear
     }
 
     Scaffold(topBar = {
@@ -122,25 +134,31 @@ fun PostListScreen2(
                     label = { Text("検索（タイトル・概要）") }
                 )
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("年月フィルタ:")
-                Text((selectedYm.value ?: "すべて"))
-            }
-            if (months.isNotEmpty()) {
-                LazyColumn(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).weight(0.3f, fill = false)) {
-                    items(months) { m ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                selectedYm.value = if (selectedYm.value == m) null else m
-                            }.padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(m)
-                            Checkbox(checked = selectedYm.value == m, onCheckedChange = {
-                                selectedYm.value = if (it) m else null
+            if (years.isNotEmpty()) {
+                val expanded = remember { mutableStateOf(false) }
+                val currentLabel = selectedYear.value ?: "すべて"
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExposedDropdownMenuBox(expanded = expanded.value, onExpandedChange = { expanded.value = !expanded.value }) {
+                        OutlinedTextField(
+                            modifier = Modifier.menuAnchor().weight(1f),
+                            readOnly = true,
+                            value = "年フィルタ: $currentLabel",
+                            onValueChange = {},
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded.value) },
+                            colors = ExposedDropdownMenuDefaults.textFieldColors()
+                        )
+                        ExposedDropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
+                            DropdownMenuItem(text = { Text("すべて") }, onClick = {
+                                selectedYear.value = null
+                                expanded.value = false
                             })
+                            years.forEach { y ->
+                                DropdownMenuItem(text = { Text(y.toString()) }, onClick = {
+                                    selectedYear.value = y.toString()
+                                    expanded.value = false
+                                })
+                            }
                         }
-                        Divider()
                     }
                 }
             }
@@ -174,26 +192,32 @@ private fun PostRow(
     onToggleHidden: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().clickable { onOpen() }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(p.title)
-        Text(dateString(p.publishedAt))
-        if (!p.summary.isNullOrBlank()) Text(p.summary!!)
+        Text(p.title, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text(dateString(p.publishedAt), fontSize = 12.sp)
+        if (!p.summary.isNullOrBlank()) Text(p.summary!!, fontSize = 13.sp)
         if (!p.thumbnailUrl.isNullOrBlank()) {
             AsyncImage(model = p.thumbnailUrl, contentDescription = null)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = onToggleBookmark) { Text(if (p.isBookmarked) "★" else "☆") }
+            IconButton(onClick = onToggleBookmark) {
+                if (p.isBookmarked) {
+                    Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク解除")
+                } else {
+                    Icon(Icons.Outlined.BookmarkBorder, contentDescription = "ブックマーク")
+                }
+            }
             IconButton(onClick = onToggleHidden) { Icon(Icons.Filled.Block, contentDescription = if (p.isHidden) "非表示解除" else "非表示") }
         }
     }
 }
 
-private fun ym(epochMs: Long): String {
-    val dt = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
-    return "%04d-%02d".format(dt.year, dt.monthValue)
-}
-
 private fun dateString(epochMs: Long): String {
     val dt = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
     return dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+}
+
+private fun yearOf(epochMs: Long): Int {
+    val dt = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
+    return dt.year
 }
 
