@@ -316,15 +316,21 @@ private fun PostRow(
 @Composable
 private fun TagChip(name: String) {
     val color = tagColorFor(name)
-    val textColor = if (color.luminance() > 0.5f) Color.Black else Color.White
-    Box(
-        modifier = Modifier
-            .height(30.dp)
-            .padding(vertical = 2.dp)
-            .background(color)
-            .padding(horizontal = 8.dp),
+    val border = color.copy(alpha = 0.35f)
+    val textColor = if (color.luminance() > 0.5f) Color(0xFF1F1F1F) else color
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, border)
     ) {
-        Text(text = name, color = textColor, fontSize = 18.sp)
+        Box(
+            modifier = Modifier
+                .height(28.dp)
+                .padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = name, color = textColor, fontSize = 12.sp)
+        }
     }
     Spacer(Modifier.width(2.dp))
 }
