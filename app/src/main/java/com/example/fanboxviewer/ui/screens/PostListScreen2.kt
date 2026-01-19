@@ -1,5 +1,6 @@
 ﻿package com.example.fanboxviewer.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,26 +15,30 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -44,6 +49,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -112,9 +119,9 @@ fun PostListScreen2(
 
     Scaffold(topBar = {
         TopAppBar(title = {
-            Row {
-                Text(creatorName, fontWeight = FontWeight.Bold, modifier = Modifier.alignByBaseline())
-                Text("の投稿", modifier = Modifier.alignByBaseline())
+            Column {
+                Text(creatorName, fontWeight = FontWeight.Bold)
+                Text("投稿一覧", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }, actions = {
             IconButton(onClick = {
@@ -149,110 +156,126 @@ fun PostListScreen2(
             }) { Icon(Icons.Filled.Refresh, contentDescription = "更新") }
         })
     }) { inner ->
-        Column(Modifier.padding(inner).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (syncing.value) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator()
+        Box(
+            modifier = Modifier
+                .padding(inner)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+        ) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (syncing.value) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text("同期中...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    modifier = Modifier.weight(1f),
-                    value = query.value,
-                    onValueChange = { query.value = it },
-                    label = { Text("検索（タイトル/要約）") }
-                )
-            }
-            val hasYearFilter = years.isNotEmpty()
-            val hasTagFilter = creatorTags.isNotEmpty()
-            if (hasYearFilter || hasTagFilter) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    if (hasYearFilter) {
-                        val expanded = remember { mutableStateOf(false) }
-                        val currentLabel = selectedYear.value ?: "すべて"
-                        val yearWeight = if (hasTagFilter) 0.40f else 1f
-                        ExposedDropdownMenuBox(
-                            modifier = Modifier.weight(yearWeight),
-                            expanded = expanded.value,
-                            onExpandedChange = { expanded.value = !expanded.value }
-                        ) {
-                            OutlinedTextField(
-                                modifier = Modifier.menuAnchor().fillMaxWidth(),
-                                readOnly = true,
-                                value = "年: $currentLabel",
-                                onValueChange = {},
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded.value) },
-                                colors = ExposedDropdownMenuDefaults.textFieldColors()
-                            )
-                            ExposedDropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
-                                DropdownMenuItem(text = { Text("すべて") }, onClick = {
-                                    selectedYear.value = null
-                                    expanded.value = false
-                                })
-                                years.forEach { y ->
-                                    DropdownMenuItem(text = { Text(y.toString()) }, onClick = {
-                                        selectedYear.value = y.toString()
-                                        expanded.value = false
-                                    })
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = query.value,
+                            onValueChange = { query.value = it },
+                            label = { Text("検索（タイトル/要約）") }
+                        )
+                        val hasYearFilter = years.isNotEmpty()
+                        val hasTagFilter = creatorTags.isNotEmpty()
+                        if (hasYearFilter || hasTagFilter) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (hasYearFilter) {
+                                    val expanded = remember { mutableStateOf(false) }
+                                    val currentLabel = selectedYear.value ?: "すべて"
+                                    val yearWeight = if (hasTagFilter) 0.45f else 1f
+                                    Box(Modifier.weight(yearWeight)) {
+                                        DropdownFilterField(
+                                            label = "年",
+                                            value = currentLabel,
+                                            onClick = { expanded.value = true },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        DropdownMenu(
+                                            expanded = expanded.value,
+                                            onDismissRequest = { expanded.value = false }
+                                        ) {
+                                            DropdownMenuItem(text = { Text("すべて") }, onClick = {
+                                                selectedYear.value = null
+                                                expanded.value = false
+                                            })
+                                            years.forEach { y ->
+                                                DropdownMenuItem(text = { Text(y.toString()) }, onClick = {
+                                                    selectedYear.value = y.toString()
+                                                    expanded.value = false
+                                                })
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                    }
-                    if (hasTagFilter) {
-                        val expanded = remember { mutableStateOf(false) }
-                        val currentLabel = selectedTag.value ?: "すべて"
-                        val tagWeight = if (hasYearFilter) 0.65f else 1f
-                        ExposedDropdownMenuBox(
-                            modifier = Modifier.weight(tagWeight),
-                            expanded = expanded.value,
-                            onExpandedChange = { expanded.value = !expanded.value }
-                        ) {
-                            OutlinedTextField(
-                                modifier = Modifier.menuAnchor().fillMaxWidth(),
-                                readOnly = true,
-                                value = "タグ: $currentLabel",
-                                onValueChange = {},
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded.value) },
-                                colors = ExposedDropdownMenuDefaults.textFieldColors()
-                            )
-                            ExposedDropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
-                                DropdownMenuItem(text = { Text("すべて") }, onClick = {
-                                    selectedTag.value = null
-                                    expanded.value = false
-                                })
-                                creatorTags.forEach { tag ->
-                                    DropdownMenuItem(text = { Text(tag.name) }, onClick = {
-                                        selectedTag.value = tag.name
-                                        expanded.value = false
-                                    })
+                                if (hasTagFilter) {
+                                    val expanded = remember { mutableStateOf(false) }
+                                    val currentLabel = selectedTag.value ?: "すべて"
+                                    val tagWeight = if (hasYearFilter) 0.65f else 1f
+                                    Box(Modifier.weight(tagWeight)) {
+                                        DropdownFilterField(
+                                            label = "タグ",
+                                            value = currentLabel,
+                                            onClick = { expanded.value = true },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        DropdownMenu(
+                                            expanded = expanded.value,
+                                            onDismissRequest = { expanded.value = false }
+                                        ) {
+                                            DropdownMenuItem(text = { Text("すべて") }, onClick = {
+                                                selectedTag.value = null
+                                                expanded.value = false
+                                            })
+                                            creatorTags.forEach { tag ->
+                                                DropdownMenuItem(text = { Text(tag.name) }, onClick = {
+                                                    selectedTag.value = tag.name
+                                                    expanded.value = false
+                                                })
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(filtered, key = { it.postId }) { p ->
-                    val tagsForPost = postTagsById[p.postId]?.map { it.tagName } ?: emptyList()
-                    PostRow(
-                        p = p,
-                        tags = tagsForPost,
-                        onOpen = {
-                            scope.launch { container.postRepository.setLastOpened(p.postId, System.currentTimeMillis()) }
-                            onOpenPost(p.url)
-                        },
-                        onToggleBookmark = {
-                            scope.launch { container.postRepository.setBookmarked(p.postId, !p.isBookmarked) }
-                        },
-                        onToggleHidden = {
-                            scope.launch { container.postRepository.setHidden(p.postId, !p.isHidden) }
-                        },
-                        onEditTags = { editingPostId.value = p.postId }
-                    )
-                    Divider()
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filtered, key = { it.postId }) { p ->
+                        val tagsForPost = postTagsById[p.postId]?.map { it.tagName } ?: emptyList()
+                        PostRow(
+                            p = p,
+                            tags = tagsForPost,
+                            onOpen = {
+                                scope.launch { container.postRepository.setLastOpened(p.postId, System.currentTimeMillis()) }
+                                onOpenPost(p.url)
+                            },
+                            onToggleBookmark = {
+                                scope.launch { container.postRepository.setBookmarked(p.postId, !p.isBookmarked) }
+                            },
+                            onToggleHidden = {
+                                scope.launch { container.postRepository.setHidden(p.postId, !p.isHidden) }
+                            },
+                            onEditTags = { editingPostId.value = p.postId }
+                        )
+                    }
                 }
             }
         }
@@ -282,33 +305,48 @@ private fun PostRow(
     onToggleHidden: () -> Unit,
     onEditTags: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().clickable { onOpen() }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(p.title, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text(dateString(p.publishedAt), fontSize = 12.sp)
-        if (!p.summary.isNullOrBlank()) Text(p.summary!!, fontSize = 13.sp)
-        if (!p.thumbnailUrl.isNullOrBlank()) {
-            AsyncImage(model = p.thumbnailUrl, contentDescription = null)
-        }
-        if (tags.isNotEmpty()) {
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                tags.forEach { tag ->
-                    TagChip(name = tag)
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onOpen() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(p.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+            Text(dateString(p.publishedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!p.summary.isNullOrBlank()) {
+                Text(p.summary!!, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (!p.thumbnailUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = p.thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            }
+            if (tags.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tags.forEach { tag ->
+                        TagChip(name = tag)
+                    }
                 }
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconButton(onClick = onToggleBookmark) {
-                if (p.isBookmarked) {
-                    Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク済み")
-                } else {
-                    Icon(Icons.Outlined.BookmarkBorder, contentDescription = "ブックマーク")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                IconButton(onClick = onToggleBookmark) {
+                    if (p.isBookmarked) {
+                        Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク済み")
+                    } else {
+                        Icon(Icons.Outlined.BookmarkBorder, contentDescription = "ブックマーク")
+                    }
                 }
+                IconButton(onClick = onToggleHidden) { Icon(Icons.Filled.Block, contentDescription = if (p.isHidden) "非表示解除" else "非表示") }
+                IconButton(onClick = onEditTags) { Icon(Icons.Filled.Label, contentDescription = "タグ編集") }
             }
-            IconButton(onClick = onToggleHidden) { Icon(Icons.Filled.Block, contentDescription = if (p.isHidden) "非表示解除" else "非表示") }
-            IconButton(onClick = onEditTags) { Icon(Icons.Filled.Label, contentDescription = "タグ編集") }
         }
     }
 }
@@ -316,17 +354,50 @@ private fun PostRow(
 @Composable
 private fun TagChip(name: String) {
     val color = tagColorFor(name)
-    val textColor = if (color.luminance() > 0.5f) Color.Black else Color.White
-    Box(
-        modifier = Modifier
-            .height(30.dp)
-            .padding(vertical = 2.dp)
-            .background(color)
-            .padding(horizontal = 8.dp),
+    val border = color.copy(alpha = 0.35f)
+    val textColor = if (color.luminance() > 0.5f) Color(0xFF1F1F1F) else color
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, border)
     ) {
-        Text(text = name, color = textColor, fontSize = 18.sp)
+        Box(
+            modifier = Modifier
+                .height(28.dp)
+                .padding(horizontal = 10.dp),
+        ) {
+            Text(text = name, color = textColor, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        }
     }
     Spacer(Modifier.width(2.dp))
+}
+
+@Composable
+private fun DropdownFilterField(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("$label: $value", style = MaterialTheme.typography.bodyMedium)
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+    }
 }
 
 @Composable

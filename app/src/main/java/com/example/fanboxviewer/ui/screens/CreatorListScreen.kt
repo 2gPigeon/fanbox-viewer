@@ -1,7 +1,9 @@
-package com.example.fanboxviewer.ui.screens
+﻿package com.example.fanboxviewer.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,7 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -66,9 +74,16 @@ fun CreatorListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("クリエイター", style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
-                        Text("一覧", style = MaterialTheme.typography.titleLarge)
+                    Column {
+                        Text(
+                            "クリエイター",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "一覧",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
                     }
                 },
                 actions = {
@@ -79,97 +94,135 @@ fun CreatorListScreen(
             )
         }
     ) { inner ->
-        Column(Modifier.padding(inner).fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(onClick = {
-                    scope.launch {
-                        syncing.value = true
-                        try {
-                            val raw = withTimeout(20000) {
-                                val api = com.example.fanboxviewer.web.CreatorApiService(ctx)
-                                val (apiList, _) = withContext(Dispatchers.IO) { api.fetchSupportingCreatorsWithDebug() }
-                                if (apiList.isNotEmpty()) apiList else {
-                                    val inPage = com.example.fanboxviewer.web.InPageApi()
-                                    val (wvList, _) = inPage.listSupportingCreators(ctx)
-                                    if (wvList.isNotEmpty()) wvList else {
-                                        val fetcher = com.example.fanboxviewer.web.CreatorWebFetcher()
-                                        fetcher.fetchSupporting(context = ctx)
-                                    }
-                                }
-                            }
-                            val enriched = withContext(Dispatchers.IO) {
-                                val resolver = com.example.fanboxviewer.web.CreatorApiService(ctx)
-                                raw.map { c ->
-                                    if (c.creatorId.all { it.isDigit() }) {
-                                        val (handle, uid, _) = resolver.resolveCreatorIds(c.creatorId)
-                                        if (!handle.isNullOrBlank()) c.copy(creatorId = handle, userId = uid ?: c.userId) else c
-                                    } else c
-                                }
-                            }
-                            val now = System.currentTimeMillis()
-                            val mapped = enriched.map {
-                                CreatorEntity(
-                                    creatorId = it.creatorId,
-                                    userId = it.userId,
-                                    name = it.name,
-                                    iconUrl = it.iconUrl,
-                                    isSupporting = true,
-                                    lastSyncedAt = now,
-                                )
-                            }
-                            container.creatorRepository.upsertAll(mapped)
-                        } catch (_: Exception) {
-                        } finally {
-                            syncing.value = false
-                        }
-                    }
-                }) { Icon(Icons.Filled.Refresh, contentDescription = "同期") }
-            }
-
-            if (syncing.value) {
+        Box(
+            modifier = Modifier
+                .padding(inner)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+        ) {
+            Column(Modifier.fillMaxSize()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator()
+                    Text(
+                        "サポート中のクリエイター",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        scope.launch {
+                            syncing.value = true
+                            try {
+                                val raw = withTimeout(20000) {
+                                    val api = com.example.fanboxviewer.web.CreatorApiService(ctx)
+                                    val (apiList, _) = withContext(Dispatchers.IO) { api.fetchSupportingCreatorsWithDebug() }
+                                    if (apiList.isNotEmpty()) apiList else {
+                                        val inPage = com.example.fanboxviewer.web.InPageApi()
+                                        val (wvList, _) = inPage.listSupportingCreators(ctx)
+                                        if (wvList.isNotEmpty()) wvList else {
+                                            val fetcher = com.example.fanboxviewer.web.CreatorWebFetcher()
+                                            fetcher.fetchSupporting(context = ctx)
+                                        }
+                                    }
+                                }
+                                val enriched = withContext(Dispatchers.IO) {
+                                    val resolver = com.example.fanboxviewer.web.CreatorApiService(ctx)
+                                    raw.map { c ->
+                                        if (c.creatorId.all { it.isDigit() }) {
+                                            val (handle, uid, _) = resolver.resolveCreatorIds(c.creatorId)
+                                            if (!handle.isNullOrBlank()) c.copy(creatorId = handle, userId = uid ?: c.userId) else c
+                                        } else c
+                                    }
+                                }
+                                val now = System.currentTimeMillis()
+                                val mapped = enriched.map {
+                                    CreatorEntity(
+                                        creatorId = it.creatorId,
+                                        userId = it.userId,
+                                        name = it.name,
+                                        iconUrl = it.iconUrl,
+                                        isSupporting = true,
+                                        lastSyncedAt = now,
+                                    )
+                                }
+                                container.creatorRepository.upsertAll(mapped)
+                            } catch (_: Exception) {
+                            } finally {
+                                syncing.value = false
+                            }
+                        }
+                    }) { Icon(Icons.Filled.Refresh, contentDescription = "更新") }
                 }
-            }
 
-            when {
-                creators == null -> {
-                    // 初期ロード中は何も表示しない（必要ならローディング表示に変更可能）
-                }
-                creators!!.isEmpty() -> {
-                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Spacer(Modifier.size(24.dp))
-                        Text("支援中クリエイターがありません")
+                if (syncing.value) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator()
+                        Text("同期中...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                else -> {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(creators!!, key = { it.creatorId }) { c ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onOpenCreator(c.creatorId, c.name) }
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AsyncImage(
-                                    model = c.iconUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp)
-                                )
-                                Column(Modifier.weight(1f)) {
-                                    Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    val ts = c.lastSyncedAt
-                                    if (ts != null && ts > 0) {
-                                        Text("最終同期 ${dateStringShort(ts)}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+
+                when {
+                    creators == null -> {
+                        // 読み込み中は何も表示しない（ローディング表示は上部に統一）
+                    }
+                    creators!!.isEmpty() -> {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(Modifier.size(24.dp))
+                            Text("サポート中のクリエイターがありません", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(creators!!, key = { it.creatorId }) { c ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onOpenCreator(c.creatorId, c.name) },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = c.iconUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(CircleShape)
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                c.name,
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            val ts = c.lastSyncedAt
+                                            if (ts != null && ts > 0) {
+                                                Text(
+                                                    "最終更新 ${dateStringShort(ts)}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -185,4 +238,3 @@ private fun dateStringShort(epochMs: Long): String {
     val dt = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault())
     return dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 }
-
