@@ -7,6 +7,13 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+data class PostUserStateRow(
+    val postId: String,
+    val creatorId: String,
+    val isBookmarked: Boolean,
+    val isHidden: Boolean,
+)
+
 @Dao
 interface PostDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -25,11 +32,20 @@ interface PostDao {
     @Query("SELECT * FROM posts WHERE isHidden = 1 ORDER BY publishedAt DESC")
     fun observeHidden(): Flow<List<PostEntity>>
 
+    @Query("SELECT postId, creatorId, isBookmarked, isHidden FROM posts WHERE isBookmarked = 1 OR isHidden = 1")
+    suspend fun listUserState(): List<PostUserStateRow>
+
     @Query("UPDATE posts SET isBookmarked = :bookmarked WHERE postId = :postId")
     suspend fun setBookmarked(postId: String, bookmarked: Boolean)
 
     @Query("UPDATE posts SET isHidden = :hidden WHERE postId = :postId")
     suspend fun setHidden(postId: String, hidden: Boolean)
+
+    @Query("UPDATE posts SET isBookmarked = 1 WHERE postId IN (:postIds)")
+    suspend fun setBookmarkedBulk(postIds: List<String>): Int
+
+    @Query("UPDATE posts SET isHidden = 1 WHERE postId IN (:postIds)")
+    suspend fun setHiddenBulk(postIds: List<String>): Int
 
     @Query("UPDATE posts SET lastOpenedAt = :ts WHERE postId = :postId")
     suspend fun setLastOpened(postId: String, ts: Long)

@@ -20,6 +20,12 @@ interface TagDao {
     @Query("SELECT postId, tagName FROM post_tags WHERE creatorId = :creatorId")
     fun observePostTagsForCreator(creatorId: String): Flow<List<PostTagEntry>>
 
+    @Query("SELECT * FROM creator_tags")
+    suspend fun listAllTags(): List<TagEntity>
+
+    @Query("SELECT * FROM post_tags")
+    suspend fun listAllPostTags(): List<PostTagEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTags(tags: List<TagEntity>)
 
