@@ -14,6 +14,13 @@ data class PostUserStateRow(
     val isHidden: Boolean,
 )
 
+data class PostUserStateSnapshot(
+    val postId: String,
+    val isBookmarked: Boolean,
+    val isHidden: Boolean,
+    val lastOpenedAt: Long?,
+)
+
 @Dao
 interface PostDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -34,6 +41,9 @@ interface PostDao {
 
     @Query("SELECT postId, creatorId, isBookmarked, isHidden FROM posts WHERE isBookmarked = 1 OR isHidden = 1")
     suspend fun listUserState(): List<PostUserStateRow>
+
+    @Query("SELECT postId, isBookmarked, isHidden, lastOpenedAt FROM posts WHERE postId IN (:postIds)")
+    suspend fun listUserStateByIds(postIds: List<String>): List<PostUserStateSnapshot>
 
     @Query("UPDATE posts SET isBookmarked = :bookmarked WHERE postId = :postId")
     suspend fun setBookmarked(postId: String, bookmarked: Boolean)

@@ -10,6 +10,19 @@ class PostRepository(private val dao: PostDao) {
     fun observeBookmarked(): Flow<List<PostEntity>> = dao.observeBookmarked()
     fun observeHidden(): Flow<List<PostEntity>> = dao.observeHidden()
     suspend fun upsertAll(posts: List<PostEntity>) = dao.upsertAll(posts)
+    suspend fun upsertAllPreservingUserState(posts: List<PostEntity>) {
+        if (posts.isEmpty()) return
+        val states = dao.listUserStateByIds(posts.map { it.postId }).associateBy { it.postId }
+        val merged = posts.map { post ->
+            val state = states[post.postId]
+            if (state == null) post else post.copy(
+                isBookmarked = state.isBookmarked,
+                isHidden = state.isHidden,
+                lastOpenedAt = state.lastOpenedAt
+            )
+        }
+        dao.upsertAll(merged)
+    }
     suspend fun listUserState(): List<PostUserStateRow> = dao.listUserState()
     suspend fun setBookmarked(postId: String, value: Boolean) = dao.setBookmarked(postId, value)
     suspend fun setHidden(postId: String, value: Boolean) = dao.setHidden(postId, value)

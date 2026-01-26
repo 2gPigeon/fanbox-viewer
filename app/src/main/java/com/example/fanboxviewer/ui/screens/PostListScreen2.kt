@@ -147,7 +147,7 @@ fun PostListScreen2(
                                 publishedAt = it.publishedAt
                             )
                         }
-                        container.postRepository.upsertAll(mapped)
+                        container.postRepository.upsertAllPreservingUserState(mapped)
                     } catch (_: Exception) {
                     } finally {
                         syncing.value = false
