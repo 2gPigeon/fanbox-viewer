@@ -130,12 +130,9 @@ fun PostListScreen2(
     val hasYearFilter = years.isNotEmpty()
     val hasTagFilter = creatorTags.isNotEmpty()
     val firstPostId = filtered.firstOrNull()?.postId
-    val syncTutorialSteps = remember(hasYearFilter) {
+    val syncTutorialSteps = remember {
         buildList {
             add(TutorialStep("posts.refresh", "更新", "投稿一覧を最新の状態に更新します。"))
-            if (hasYearFilter) {
-                add(TutorialStep("posts.filter.year", "年フィルタ", "投稿を年で絞り込めます。"))
-            }
         }
     }
     val actionTutorialSteps = remember(firstPostId) {
