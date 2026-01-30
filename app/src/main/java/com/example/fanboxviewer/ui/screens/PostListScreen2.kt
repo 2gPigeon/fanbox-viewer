@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +46,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +63,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.fanboxviewer.AppContainer
 import com.example.fanboxviewer.data.local.PostEntity
+import com.example.fanboxviewer.data.prefs.TutorialPrefs
+import com.example.fanboxviewer.ui.components.SpotlightTutorialOverlay
+import com.example.fanboxviewer.ui.components.TutorialStep
+import com.example.fanboxviewer.ui.components.tutorialTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,6 +106,10 @@ fun PostListScreen2(
     val selectedTag = remember { mutableStateOf<String?>(null) }
     val syncing = remember { mutableStateOf(false) }
     val editingPostId = remember { mutableStateOf<String?>(null) }
+    val tutorialTargets = remember { mutableStateMapOf<String, Rect>() }
+    val syncTutorialShown by TutorialPrefs.shownFlowNullable(ctx, TutorialPrefs.PostsSyncShown).collectAsState(initial = null)
+    val actionsTutorialShown by TutorialPrefs.shownFlowNullable(ctx, TutorialPrefs.PostsActionsShown).collectAsState(initial = null)
+    val postsHasSynced by TutorialPrefs.shownFlowNullable(ctx, TutorialPrefs.PostsHasSynced).collectAsState(initial = null)
 
     val years = run {
         if (posts.isEmpty()) emptyList() else {
@@ -116,169 +127,224 @@ fun PostListScreen2(
         } ?: true
         matchesQuery && matchesYear && matchesTag
     }
-
-    Scaffold(topBar = {
-        TopAppBar(title = {
-            Column {
-                Text(creatorName, fontWeight = FontWeight.Bold)
-                Text("投稿一覧", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val hasYearFilter = years.isNotEmpty()
+    val hasTagFilter = creatorTags.isNotEmpty()
+    val firstPostId = filtered.firstOrNull()?.postId
+    val syncTutorialSteps = remember(hasYearFilter) {
+        buildList {
+            add(TutorialStep("posts.refresh", "更新", "投稿一覧を最新の状態に更新します。"))
+            if (hasYearFilter) {
+                add(TutorialStep("posts.filter.year", "年フィルタ", "投稿を年で絞り込めます。"))
             }
-        }, actions = {
-            IconButton(onClick = {
-                scope.launch {
-                    syncing.value = true
-                    try {
-                        val items = withTimeout(60000) {
-                            val api = com.example.fanboxviewer.web.PostApiService(ctx)
-                            val (apiList, _) = withContext(Dispatchers.IO) { api.fetchPostsForCreatorWithDebug(preferredId, limit = 5000) }
-                            if (apiList.isNotEmpty()) apiList else {
-                                val (wvList, _) = com.example.fanboxviewer.web.PostInPageApi().listPosts(ctx, preferredId, limit = 5000)
-                                wvList
+        }
+    }
+    val actionTutorialSteps = remember(firstPostId) {
+        buildList {
+            if (firstPostId != null) {
+                add(TutorialStep("posts.row.bookmark", "ブックマーク", "この投稿をブックマークします。"))
+                add(TutorialStep("posts.row.hidden", "非表示", "この投稿を一覧から非表示にします。"))
+                add(TutorialStep("posts.row.tags", "タグ編集", "投稿にタグを付けて整理できます。"))
+            }
+        }
+    }
+    val showSyncTutorial = (syncTutorialShown == false)
+    val showActionsTutorial = (postsHasSynced == true) && firstPostId != null && (actionsTutorialShown == false) && !showSyncTutorial
+
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(topBar = {
+            TopAppBar(title = {
+                Column {
+                    Text(creatorName, fontWeight = FontWeight.Bold)
+                    Text("投稿一覧", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }, actions = {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            TutorialPrefs.setShown(ctx, TutorialPrefs.PostsSyncShown, false)
+                            if (postsHasSynced == true) {
+                                TutorialPrefs.setShown(ctx, TutorialPrefs.PostsActionsShown, false)
                             }
                         }
-                        val mapped = items.map {
-                            PostEntity(
-                                postId = it.postId,
-                                creatorId = it.creatorId,
-                                title = it.title,
-                                summary = it.summary,
-                                url = it.url,
-                                thumbnailUrl = it.thumb,
-                                publishedAt = it.publishedAt
+                    }
+                ) { Icon(Icons.Outlined.HelpOutline, contentDescription = "チュートリアル") }
+                IconButton(
+                    modifier = Modifier.tutorialTarget("posts.refresh", tutorialTargets),
+                    onClick = {
+                        scope.launch {
+                            syncing.value = true
+                            try {
+                                val items = withTimeout(60000) {
+                                    val api = com.example.fanboxviewer.web.PostApiService(ctx)
+                                    val (apiList, _) = withContext(Dispatchers.IO) { api.fetchPostsForCreatorWithDebug(preferredId, limit = 5000) }
+                                    if (apiList.isNotEmpty()) apiList else {
+                                        val (wvList, _) = com.example.fanboxviewer.web.PostInPageApi().listPosts(ctx, preferredId, limit = 5000)
+                                        wvList
+                                    }
+                                }
+                                val mapped = items.map {
+                                    PostEntity(
+                                        postId = it.postId,
+                                        creatorId = it.creatorId,
+                                        title = it.title,
+                                        summary = it.summary,
+                                        url = it.url,
+                                        thumbnailUrl = it.thumb,
+                                        publishedAt = it.publishedAt
+                                    )
+                                }
+                                container.postRepository.upsertAllPreservingUserState(mapped)
+                            TutorialPrefs.setShown(ctx, TutorialPrefs.PostsHasSynced, true)
+                            } catch (_: Exception) {
+                            } finally {
+                                syncing.value = false
+                            }
+                        }
+                    }) { Icon(Icons.Filled.Refresh, contentDescription = "更新") }
+            })
+        }) { inner ->
+            Box(
+                modifier = Modifier
+                    .padding(inner)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+            ) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (syncing.value) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator()
+                            Text("同期中...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = query.value,
+                                onValueChange = { query.value = it },
+                                label = { Text("検索（タイトル/要約）") }
+                            )
+                            if (hasYearFilter || hasTagFilter) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (hasYearFilter) {
+                                        val expanded = remember { mutableStateOf(false) }
+                                        val currentLabel = selectedYear.value ?: "すべて"
+                                        val yearWeight = if (hasTagFilter) 0.45f else 1f
+                                        Box(Modifier.weight(yearWeight)) {
+                                            DropdownFilterField(
+                                                label = "年",
+                                                value = currentLabel,
+                                                onClick = { expanded.value = true },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .tutorialTarget("posts.filter.year", tutorialTargets)
+                                            )
+                                            DropdownMenu(
+                                                expanded = expanded.value,
+                                                onDismissRequest = { expanded.value = false }
+                                            ) {
+                                                DropdownMenuItem(text = { Text("すべて") }, onClick = {
+                                                    selectedYear.value = null
+                                                    expanded.value = false
+                                                })
+                                                years.forEach { y ->
+                                                    DropdownMenuItem(text = { Text(y.toString()) }, onClick = {
+                                                        selectedYear.value = y.toString()
+                                                        expanded.value = false
+                                                    })
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (hasTagFilter) {
+                                        val expanded = remember { mutableStateOf(false) }
+                                        val currentLabel = selectedTag.value ?: "すべて"
+                                        val tagWeight = if (hasYearFilter) 0.65f else 1f
+                                        Box(Modifier.weight(tagWeight)) {
+                                            DropdownFilterField(
+                                                label = "タグ",
+                                                value = currentLabel,
+                                                onClick = { expanded.value = true },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .tutorialTarget("posts.filter.tag", tutorialTargets)
+                                            )
+                                            DropdownMenu(
+                                                expanded = expanded.value,
+                                                onDismissRequest = { expanded.value = false }
+                                            ) {
+                                                DropdownMenuItem(text = { Text("すべて") }, onClick = {
+                                                    selectedTag.value = null
+                                                    expanded.value = false
+                                                })
+                                                creatorTags.forEach { tag ->
+                                                    DropdownMenuItem(text = { Text(tag.name) }, onClick = {
+                                                        selectedTag.value = tag.name
+                                                        expanded.value = false
+                                                    })
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filtered, key = { it.postId }) { p ->
+                            val tagsForPost = postTagsById[p.postId]?.map { it.tagName } ?: emptyList()
+                            PostRow(
+                                p = p,
+                                tags = tagsForPost,
+                                onOpen = {
+                                    scope.launch { container.postRepository.setLastOpened(p.postId, System.currentTimeMillis()) }
+                                    onOpenPost(p.url)
+                                },
+                                onToggleBookmark = {
+                                    scope.launch { container.postRepository.setBookmarked(p.postId, !p.isBookmarked) }
+                                },
+                                onToggleHidden = {
+                                    scope.launch { container.postRepository.setHidden(p.postId, !p.isHidden) }
+                                },
+                                onEditTags = { editingPostId.value = p.postId },
+                                tutorialTargetPrefix = if (p.postId == firstPostId) "posts.row" else null,
+                                tutorialTargets = tutorialTargets
                             )
                         }
-                        container.postRepository.upsertAllPreservingUserState(mapped)
-                    } catch (_: Exception) {
-                    } finally {
-                        syncing.value = false
-                    }
-                }
-            }) { Icon(Icons.Filled.Refresh, contentDescription = "更新") }
-        })
-    }) { inner ->
-        Box(
-            modifier = Modifier
-                .padding(inner)
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-        ) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (syncing.value) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text("同期中...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = query.value,
-                            onValueChange = { query.value = it },
-                            label = { Text("検索（タイトル/要約）") }
-                        )
-                        val hasYearFilter = years.isNotEmpty()
-                        val hasTagFilter = creatorTags.isNotEmpty()
-                        if (hasYearFilter || hasTagFilter) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (hasYearFilter) {
-                                    val expanded = remember { mutableStateOf(false) }
-                                    val currentLabel = selectedYear.value ?: "すべて"
-                                    val yearWeight = if (hasTagFilter) 0.45f else 1f
-                                    Box(Modifier.weight(yearWeight)) {
-                                        DropdownFilterField(
-                                            label = "年",
-                                            value = currentLabel,
-                                            onClick = { expanded.value = true },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        DropdownMenu(
-                                            expanded = expanded.value,
-                                            onDismissRequest = { expanded.value = false }
-                                        ) {
-                                            DropdownMenuItem(text = { Text("すべて") }, onClick = {
-                                                selectedYear.value = null
-                                                expanded.value = false
-                                            })
-                                            years.forEach { y ->
-                                                DropdownMenuItem(text = { Text(y.toString()) }, onClick = {
-                                                    selectedYear.value = y.toString()
-                                                    expanded.value = false
-                                                })
-                                            }
-                                        }
-                                    }
-                                }
-                                if (hasTagFilter) {
-                                    val expanded = remember { mutableStateOf(false) }
-                                    val currentLabel = selectedTag.value ?: "すべて"
-                                    val tagWeight = if (hasYearFilter) 0.65f else 1f
-                                    Box(Modifier.weight(tagWeight)) {
-                                        DropdownFilterField(
-                                            label = "タグ",
-                                            value = currentLabel,
-                                            onClick = { expanded.value = true },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        DropdownMenu(
-                                            expanded = expanded.value,
-                                            onDismissRequest = { expanded.value = false }
-                                        ) {
-                                            DropdownMenuItem(text = { Text("すべて") }, onClick = {
-                                                selectedTag.value = null
-                                                expanded.value = false
-                                            })
-                                            creatorTags.forEach { tag ->
-                                                DropdownMenuItem(text = { Text(tag.name) }, onClick = {
-                                                    selectedTag.value = tag.name
-                                                    expanded.value = false
-                                                })
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filtered, key = { it.postId }) { p ->
-                        val tagsForPost = postTagsById[p.postId]?.map { it.tagName } ?: emptyList()
-                        PostRow(
-                            p = p,
-                            tags = tagsForPost,
-                            onOpen = {
-                                scope.launch { container.postRepository.setLastOpened(p.postId, System.currentTimeMillis()) }
-                                onOpenPost(p.url)
-                            },
-                            onToggleBookmark = {
-                                scope.launch { container.postRepository.setBookmarked(p.postId, !p.isBookmarked) }
-                            },
-                            onToggleHidden = {
-                                scope.launch { container.postRepository.setHidden(p.postId, !p.isHidden) }
-                            },
-                            onEditTags = { editingPostId.value = p.postId }
-                        )
                     }
                 }
             }
         }
+
+        SpotlightTutorialOverlay(
+            steps = syncTutorialSteps,
+            targetRects = tutorialTargets,
+            visible = showSyncTutorial,
+            onFinish = { scope.launch { TutorialPrefs.setShown(ctx, TutorialPrefs.PostsSyncShown) } }
+        )
+
+        SpotlightTutorialOverlay(
+            steps = actionTutorialSteps,
+            targetRects = tutorialTargets,
+            visible = showActionsTutorial,
+            onFinish = { scope.launch { TutorialPrefs.setShown(ctx, TutorialPrefs.PostsActionsShown) } }
+        )
     }
 
     val editingId = editingPostId.value
@@ -304,6 +370,8 @@ private fun PostRow(
     onToggleBookmark: () -> Unit,
     onToggleHidden: () -> Unit,
     onEditTags: () -> Unit,
+    tutorialTargetPrefix: String? = null,
+    tutorialTargets: MutableMap<String, Rect>? = null,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onOpen() },
@@ -337,15 +405,26 @@ private fun PostRow(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = onToggleBookmark) {
+                val bookmarkModifier = if (tutorialTargetPrefix != null && tutorialTargets != null) {
+                    Modifier.tutorialTarget("$tutorialTargetPrefix.bookmark", tutorialTargets)
+                } else Modifier
+                val hiddenModifier = if (tutorialTargetPrefix != null && tutorialTargets != null) {
+                    Modifier.tutorialTarget("$tutorialTargetPrefix.hidden", tutorialTargets)
+                } else Modifier
+                val tagsModifier = if (tutorialTargetPrefix != null && tutorialTargets != null) {
+                    Modifier.tutorialTarget("$tutorialTargetPrefix.tags", tutorialTargets)
+                } else Modifier
+                IconButton(modifier = bookmarkModifier, onClick = onToggleBookmark) {
                     if (p.isBookmarked) {
                         Icon(Icons.Filled.Bookmark, contentDescription = "ブックマーク済み")
                     } else {
                         Icon(Icons.Outlined.BookmarkBorder, contentDescription = "ブックマーク")
                     }
                 }
-                IconButton(onClick = onToggleHidden) { Icon(Icons.Filled.Block, contentDescription = if (p.isHidden) "非表示解除" else "非表示") }
-                IconButton(onClick = onEditTags) { Icon(Icons.Filled.Label, contentDescription = "タグ編集") }
+                IconButton(modifier = hiddenModifier, onClick = onToggleHidden) {
+                    Icon(Icons.Filled.Block, contentDescription = if (p.isHidden) "非表示解除" else "非表示")
+                }
+                IconButton(modifier = tagsModifier, onClick = onEditTags) { Icon(Icons.Filled.Label, contentDescription = "タグ編集") }
             }
         }
     }
