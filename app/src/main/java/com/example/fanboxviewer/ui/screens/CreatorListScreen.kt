@@ -80,10 +80,10 @@ fun CreatorListScreen(
     val tutorialShown by TutorialPrefs.shownFlowNullable(ctx, TutorialPrefs.CreatorsShown).collectAsState(initial = null)
     val tutorialSteps = remember {
         listOf(
-            TutorialStep("creators.bookmark", "ブックマーク", "ブックマーク済みのクリエイターを確認できます。"),
-            TutorialStep("creators.hidden", "非表示", "非表示にしたクリエイターの一覧を表示します。"),
+            TutorialStep("creators.bookmark", "ブックマーク", "ブックマーク済みの投稿を確認できます。"),
+            TutorialStep("creators.hidden", "非表示", "非表示にした投稿の一覧を表示します。"),
             TutorialStep("creators.settings", "設定", "アプリの各種設定を開きます。"),
-            TutorialStep("creators.refresh", "更新", "サポート中のクリエイターを最新状態に更新します。"),
+            TutorialStep("creators.refresh", "更新", "クリエイターリストを更新します。"),
         )
     }
 

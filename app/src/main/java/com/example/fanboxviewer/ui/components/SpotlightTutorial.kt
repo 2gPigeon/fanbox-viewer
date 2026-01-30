@@ -1,4 +1,4 @@
-package com.example.fanboxviewer.ui.components
+﻿package com.example.fanboxviewer.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -9,6 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -128,18 +133,39 @@ fun SpotlightTutorialOverlay(
                 .offset { IntOffset(clampedX.roundToInt(), clampedY.roundToInt()) }
                 .widthIn(max = 320.dp)
                 .onGloballyPositioned { coords -> tooltipSize = coords.size },
+            shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
+            ) {
+                val guideColor = MaterialTheme.colorScheme.primary
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(Modifier.width(10.dp).height(10.dp)) {
+                        drawCircle(color = guideColor)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "GUIDE",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = guideColor
+                    )
+                }
                 Text(current.title, style = MaterialTheme.typography.titleMedium)
-                Text(current.body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    current.body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(
                     modifier = Modifier.align(Alignment.End),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = { goNext() }) { Text(if (isLast) "終了" else "次へ") }
+                    TextButton(onClick = { goNext() }) { Text(if (isLast) "完了" else "次へ") }
                 }
             }
         }
