@@ -34,7 +34,6 @@ class InPageApi {
         val logSb = StringBuilder()
         val endpoints = listOf(
             Triple("POST", "https://api.fanbox.cc/plan.listSupporting", "{}"),
-            Triple("POST", "https://api.fanbox.cc/creator.listSupporting", "{}"),
         )
 
         fun jsFetch(method: String, url: String, body: String): String {

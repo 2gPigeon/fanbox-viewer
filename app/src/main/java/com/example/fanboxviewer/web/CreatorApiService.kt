@@ -13,27 +13,35 @@ class CreatorApiService(private val context: Context) {
     private val client = ApiClient(context)
 
     fun fetchSupportingCreators(): List<CreatorWebItem> {
-        // Try known likely endpoints in order
+        data class Endpoint(val url: String, val method: String, val body: String?)
+        // creator.listSupporting is gone; plan.listSupporting works with GET.
         val candidates = listOf(
-            "https://api.fanbox.cc/plan.listSupporting",
-            "https://api.fanbox.cc/creator.listSupporting",
+            Endpoint("https://api.fanbox.cc/plan.listSupporting", "GET", null),
         )
         val errors = mutableListOf<String>()
-        for (url in candidates) {
+        for (ep in candidates) {
             try {
-                val req = Request.Builder().url(url.toHttpUrl()).get().build()
+                val builder = Request.Builder().url(ep.url.toHttpUrl())
+                if (ep.method == "POST") {
+                    val media = "application/json; charset=utf-8".toMediaType()
+                    val body = (ep.body ?: "{}").toRequestBody(media)
+                    builder.post(body).header("Content-Type", "application/json")
+                } else {
+                    builder.get()
+                }
+                val req = builder.build()
                 client.execute(req).use { resp ->
                     if (!resp.isSuccessful) {
-                        errors += "${resp.code} ${resp.message} @ $url"
+                        errors += "${resp.code} ${resp.message} @ ${ep.method} ${ep.url}"
                         return@use
                     }
                     val body = resp.body?.string() ?: ""
                     val parsed = parseCreatorsFromApi(body)
                     if (parsed.isNotEmpty()) return parsed
-                    errors += "empty @ $url"
+                    errors += "empty @ ${ep.method} ${ep.url}"
                 }
             } catch (e: Exception) {
-                errors += "exception ${e.message} @ $url"
+                errors += "exception ${e.message} @ ${ep.method} ${ep.url}"
             }
         }
         if (errors.isNotEmpty()) {
@@ -46,10 +54,7 @@ class CreatorApiService(private val context: Context) {
         val log = StringBuilder()
         data class Endpoint(val url: String, val method: String, val body: String?)
         val candidates = listOf(
-            Endpoint("https://api.fanbox.cc/plan.listSupporting", "POST", "{}"),
-            Endpoint("https://api.fanbox.cc/creator.listSupporting", "POST", "{}"),
             Endpoint("https://api.fanbox.cc/plan.listSupporting", "GET", null),
-            Endpoint("https://api.fanbox.cc/creator.listSupporting", "GET", null),
         )
         for (ep in candidates) {
             try {
@@ -109,12 +114,25 @@ class CreatorApiService(private val context: Context) {
                     is JSONObject -> {
                         val names = listOf("items", "plans", "supportings", "supporting", "supportingCreators", "creators", "data")
                         names.forEach { n -> if (b.has(n) && b.opt(n) is JSONArray) candidates += b.getJSONArray(n) }
+                        // plan.listSupporting can return { body: { plans: { items: [...] } } }
+                        if (b.has("plans") && b.opt("plans") is JSONObject) {
+                            val plansObj = b.getJSONObject("plans")
+                            if (plansObj.has("items") && plansObj.opt("items") is JSONArray) {
+                                candidates += plansObj.getJSONArray("items")
+                            }
+                        }
                     }
                     is JSONArray -> candidates += b
                 }
             }
             val topNames = listOf("items", "plans", "supportings", "supporting", "supportingCreators", "creators", "data")
             topNames.forEach { n -> if (root.has(n) && root.opt(n) is JSONArray) candidates += root.getJSONArray(n) }
+            if (root.has("plans") && root.opt("plans") is JSONObject) {
+                val plansObj = root.getJSONObject("plans")
+                if (plansObj.has("items") && plansObj.opt("items") is JSONArray) {
+                    candidates += plansObj.getJSONArray("items")
+                }
+            }
 
             val arr = candidates.firstOrNull() ?: return emptyList()
             val list = mutableListOf<CreatorWebItem>()
@@ -122,7 +140,7 @@ class CreatorApiService(private val context: Context) {
                 val o = arr.getJSONObject(i)
                 extractCreatorFromAny(o)?.let { list += it }
             }
-            list
+            dedupeCreators(list)
         } catch (_: Exception) {
             emptyList()
         }
@@ -147,7 +165,7 @@ class CreatorApiService(private val context: Context) {
                     val o = arr.optJSONObject(i) ?: continue
                     extractCreatorFromAny(o)?.let { list += it }
                 }
-                if (list.isNotEmpty()) return list
+                if (list.isNotEmpty()) return dedupeCreators(list)
             }
             emptyList()
         } catch (_: Exception) { emptyList() }
@@ -184,6 +202,17 @@ class CreatorApiService(private val context: Context) {
             iconUrl = icon?.ifBlank { null },
             userId = uid
         )
+    }
+
+    private fun dedupeCreators(list: List<CreatorWebItem>): List<CreatorWebItem> {
+        if (list.isEmpty()) return list
+        val seen = LinkedHashMap<String, CreatorWebItem>()
+        for (item in list) {
+            val key = item.creatorId.ifBlank { item.userId ?: "" }
+            if (key.isBlank()) continue
+            if (!seen.containsKey(key)) seen[key] = item
+        }
+        return if (seen.isEmpty()) list else seen.values.toList()
     }
 
     fun resolveCreatorIds(inputId: String): Triple<String?, String?, String> {
